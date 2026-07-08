@@ -1,15 +1,19 @@
-import { useLayoutEffect } from "react";
-import { View, StyleSheet, Text, TextInput } from "react-native";
+import { useLayoutEffect, useState } from "react";
+import { View, StyleSheet } from "react-native";
 import { useContext } from "react";
 
 import { ExpensesContext } from "../store/expenses-context";
-import Button from "../components/UI/Button";
 import IconButton from "../components/UI/IconButton";
 import { GlobalStyles } from "../constants/styles";
 import ExpenseForm from "../components/ManageExpense/ExpenseForm";
-
+import { storeExpense, updateExpense, deleteExpense } from "../util/http";
+import LoadingOverley from "../components/UI/LoadingOverley";
+import ErrorLoadingOverlay from "../components/UI/ErrorLoadingOverlay";
 
 function ManageExpense({ route, navigation }) {
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const [error, setError] = useState();
 
     const expensesCtx = useContext(ExpensesContext);
 
@@ -26,43 +30,71 @@ function ManageExpense({ route, navigation }) {
         });
     }, [navigation, isEditing]);
 
-    function deleteExpenseHandler() {
-        expensesCtx.deleteExpense(editedExpenseId);
-        navigation.goBack();
+    async function deleteExpenseHandler() {
+        setIsSubmitting(true);
+        try {
+            await deleteExpense(editedExpenseId);
+            expensesCtx.deleteExpense(editedExpenseId);
+            navigation.goBack();
+        } catch (error) {
+            setError('Could not delete expense - Please try again');
+            setIsSubmitting(false);
+        }
     }
 
     function cancelHandler() {
         navigation.goBack();
     }
 
-    function confirmHandler(expenseData) {
-        if (isEditing) {
-            expensesCtx.updateExpense(editedExpenseId, expenseData);
+    async function confirmHandler(expenseData) {
+        setIsSubmitting(true);
+        try {
+            if (isEditing) {
+                await updateExpense(editedExpenseId, expenseData);
+                expensesCtx.updateExpense(editedExpenseId, expenseData);
+            } else {
+                const id = await storeExpense(expenseData);
+                expensesCtx.addExpense({ ...expenseData, id: id });
+            }
+            navigation.goBack();
+        } catch (error) {
+            setError('Could not save data - Please try again later');
+            setIsSubmitting(false);
         }
-        else {
-            expensesCtx.addExpense(expenseData);
-        }
-        navigation.goBack();
     }
 
-    return <View style={styles.container}>
-        <ExpenseForm 
-         submitButtonLabel={isEditing ? 'Update' : 'Add'}
-         onSubmit={confirmHandler}
-         onCancel={cancelHandler} 
-         defaultValues={selectedExpense}
-        />
-        {isEditing && (
-            <View style={styles.deleteContainer}>
-                <IconButton 
-                 icon="trash" 
-                 color={GlobalStyles.colors.error500} 
-                 size={36}
-                 onPress={deleteExpenseHandler} 
+    function errorHandler(){
+        setError(null);
+    }
+
+    if(error && !setIsSubmitting){
+        return <ErrorLoadingOverlay message={error} onConfirm={errorHandler}/>
+    }
+
+    if (isSubmitting) {
+        return <LoadingOverley />;
+    }
+
+    return (
+        <View style={styles.container}>
+            <ExpenseForm 
+                submitButtonLabel={isEditing ? 'Update' : 'Add'}
+                onSubmit={confirmHandler}
+                onCancel={cancelHandler} 
+                defaultValues={selectedExpense}
             />
-            </View>
-        )}
-    </View>
+            {isEditing && (
+                <View style={styles.deleteContainer}>
+                    <IconButton 
+                        icon="trash" 
+                        color={GlobalStyles.colors.error500} 
+                        size={36}
+                        onPress={deleteExpenseHandler} 
+                    />
+                </View>
+            )}
+        </View>
+    );
 }
 
 export default ManageExpense;
